@@ -185,7 +185,7 @@ public class CSoundPool
 	 * @param loop
 	 * @return error code (<0) on error, stream id on success.
 	 */
-	public int playSound(int sound_id, int priority, boolean loop)
+	public int playSound(int sound_id, float volume, int priority, int loop)
 	{
 		AudioData audioData = m_audioDataMap.get(sound_id);
 		if (audioData == null)
@@ -212,7 +212,7 @@ public class CSoundPool
 		{
 			return ret;
 		}
-		ret = track.audioTrack.setLoopPoints(0, audioData.numFrames - 1, loop ? -1 : 0);
+		ret = track.audioTrack.setLoopPoints(0, audioData.numFrames - 1, loop);
 		if (ret != AudioTrack.SUCCESS)
 		{
 			return ret;
@@ -221,6 +221,7 @@ public class CSoundPool
 		// params.setSpeed(1.0f);
 		// track.audioTrack.setPlaybackParams(params);
 		// track.audioTrack.setPlaybackRate(m_sampleRate);
+		track.audioTrack.setVolume(volume);
 		track.play();
 
 		int stream_id = ++m_stream_id;
