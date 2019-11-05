@@ -4,9 +4,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Queue;
 import java.util.Stack;
 
 import android.annotation.SuppressLint;
@@ -60,11 +60,23 @@ public class CSoundPool
 		}
 	}
 
+	private class TrackIndex
+	{
+		public int track_index = 0;
+		public int priority = 0;
+
+		public TrackIndex(int track_index, int priority)
+		{
+			this.track_index = track_index;
+			this.priority = priority;
+		}
+	}
+
 	private SparseArray<AudioData> m_audioDataMap = new SparseArray<AudioData>();
 	private SparseIntArray m_playSoundMap = new SparseIntArray(); // stream_id=>track_id
 	private List<AudioTrackInfo> m_trackList = null;
 	private Stack<Integer> m_freeTrack = new Stack<Integer>(); // track_index
-	private Queue<Integer> m_playTrack = new LinkedList<Integer>(); // track_index
+	private LinkedList<TrackIndex> m_playTrack = new LinkedList<TrackIndex>();
 	private int m_sound_id = 0;
 	private int m_stream_id = 0;
 	private Activity m_activity = null;
@@ -79,7 +91,7 @@ public class CSoundPool
 	 * Load Sound. Only support pcm wav file.
 	 * 
 	 * @param path
-	 * @return
+	 * @return error code (<0) on error, sound id on success.
 	 */
 	public int LoadSound(String path, boolean isAsset)
 	{
@@ -169,10 +181,11 @@ public class CSoundPool
 	 * 
 	 * @param sound_id
 	 *            return by LoadSound.
+	 * @param priority
 	 * @param loop
-	 * @return if success > 0;
+	 * @return error code (<0) on error, stream id on success.
 	 */
-	public int PlaySound(int sound_id, boolean loop)
+	public int PlaySound(int sound_id, int priority, boolean loop)
 	{
 		AudioData audioData = m_audioDataMap.get(sound_id);
 		if (audioData == null)
@@ -187,7 +200,7 @@ public class CSoundPool
 		}
 		else
 		{
-			trackIndex = m_playTrack.remove();
+			trackIndex = PopPlayTrack().track_index;
 		}
 
 		AudioTrackInfo track = GetAudioTrack(trackIndex);
@@ -211,9 +224,45 @@ public class CSoundPool
 		track.play();
 
 		int stream_id = ++m_stream_id;
-		m_playTrack.add(trackIndex);
+		PushPlayTrack(new TrackIndex(trackIndex, priority));
 		m_playSoundMap.put(stream_id, trackIndex);
 		return stream_id;
+	}
+
+	private TrackIndex PopPlayTrack()
+	{
+		return m_playTrack.removeFirst();
+	}
+
+	private void PushPlayTrack(TrackIndex track)
+	{
+		int index = 0;
+		Iterator<TrackIndex> it = m_playTrack.iterator();
+		while (it.hasNext())
+		{
+			TrackIndex info = it.next();
+			if (info.priority > track.priority)
+			{
+				m_playTrack.add(index, track);
+				return;
+			}
+			++index;
+		}
+		m_playTrack.addLast(track);
+	}
+
+	private void RemovePlayTrack(int track_index)
+	{
+		Iterator<TrackIndex> it = m_playTrack.iterator();
+		while (it.hasNext())
+		{
+			TrackIndex info = it.next();
+			if (info.track_index == track_index)
+			{
+				it.remove();
+				break;
+			}
+		}
 	}
 
 	private void SetAudioData(AudioData audioData)
@@ -247,8 +296,8 @@ public class CSoundPool
 		}
 
 		int trackIndex = m_playSoundMap.valueAt(index);
+		RemovePlayTrack(trackIndex);
 		m_playSoundMap.removeAt(index);
-		m_playTrack.remove(trackIndex);
 		m_freeTrack.push(trackIndex);
 
 		AudioTrackInfo track = GetAudioTrack(trackIndex);
@@ -264,9 +313,9 @@ public class CSoundPool
 		{
 			track.stop();
 		}
-		for (Integer index : m_playTrack)
+		for (TrackIndex info : m_playTrack)
 		{
-			m_freeTrack.push(index);
+			m_freeTrack.push(info.track_index);
 		}
 		m_playTrack.clear();
 		m_playSoundMap.clear();
