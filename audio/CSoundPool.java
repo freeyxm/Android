@@ -84,7 +84,7 @@ public class CSoundPool
 	public CSoundPool(Activity activity, int maxStreams)
 	{
 		m_activity = activity;
-		InitSoundTracks(maxStreams);
+		initSoundTracks(maxStreams);
 	}
 
 	/**
@@ -93,7 +93,7 @@ public class CSoundPool
 	 * @param path
 	 * @return error code (<0) on error, sound id on success.
 	 */
-	public int LoadSound(String path, boolean isAsset)
+	public int loadSound(String path, boolean isAsset)
 	{
 		WavFile wavFile = null;
 		try
@@ -171,7 +171,7 @@ public class CSoundPool
 	 * @param sound_id
 	 *            return by LoadSound.
 	 */
-	public void UnloadSound(int sound_id)
+	public void unloadSound(int sound_id)
 	{
 		m_audioDataMap.remove(sound_id);
 	}
@@ -185,7 +185,7 @@ public class CSoundPool
 	 * @param loop
 	 * @return error code (<0) on error, stream id on success.
 	 */
-	public int PlaySound(int sound_id, int priority, boolean loop)
+	public int playSound(int sound_id, int priority, boolean loop)
 	{
 		AudioData audioData = m_audioDataMap.get(sound_id);
 		if (audioData == null)
@@ -200,13 +200,13 @@ public class CSoundPool
 		}
 		else
 		{
-			trackIndex = PopPlayTrack().track_index;
+			trackIndex = popPlayTrack().track_index;
 		}
 
-		AudioTrackInfo track = GetAudioTrack(trackIndex);
+		AudioTrackInfo track = getAudioTrack(trackIndex);
 		track.stop();
 
-		SetAudioData(audioData);
+		setAudioData(audioData);
 		int ret = track.audioTrack.write(m_audioBuffer, 0, m_audioBuffer.length, AudioTrack.WRITE_BLOCKING);
 		if (ret < 0)
 		{
@@ -224,17 +224,17 @@ public class CSoundPool
 		track.play();
 
 		int stream_id = ++m_stream_id;
-		PushPlayTrack(new TrackIndex(trackIndex, priority));
+		pushPlayTrack(new TrackIndex(trackIndex, priority));
 		m_playSoundMap.put(stream_id, trackIndex);
 		return stream_id;
 	}
 
-	private TrackIndex PopPlayTrack()
+	private TrackIndex popPlayTrack()
 	{
 		return m_playTrack.removeFirst();
 	}
 
-	private void PushPlayTrack(TrackIndex track)
+	private void pushPlayTrack(TrackIndex track)
 	{
 		int index = 0;
 		Iterator<TrackIndex> it = m_playTrack.iterator();
@@ -251,7 +251,7 @@ public class CSoundPool
 		m_playTrack.addLast(track);
 	}
 
-	private void RemovePlayTrack(int track_index)
+	private void removePlayTrack(int track_index)
 	{
 		Iterator<TrackIndex> it = m_playTrack.iterator();
 		while (it.hasNext())
@@ -265,7 +265,7 @@ public class CSoundPool
 		}
 	}
 
-	private void SetAudioData(AudioData audioData)
+	private void setAudioData(AudioData audioData)
 	{
 		int length = audioData.numFrames * audioData.numChannels;
 		if (length > m_audioBuffer.length)
@@ -287,7 +287,7 @@ public class CSoundPool
 	 * @param stream_id
 	 *            retun by PlaySound.
 	 */
-	public void StopSound(int stream_id)
+	public void stopSound(int stream_id)
 	{
 		int index = m_playSoundMap.indexOfKey(stream_id);
 		if (index < 0)
@@ -296,18 +296,18 @@ public class CSoundPool
 		}
 
 		int trackIndex = m_playSoundMap.valueAt(index);
-		RemovePlayTrack(trackIndex);
+		removePlayTrack(trackIndex);
 		m_playSoundMap.removeAt(index);
 		m_freeTrack.push(trackIndex);
 
-		AudioTrackInfo track = GetAudioTrack(trackIndex);
+		AudioTrackInfo track = getAudioTrack(trackIndex);
 		if (track != null)
 		{
 			track.stop();
 		}
 	}
 
-	public void StopAllSound()
+	public void stopAllSound()
 	{
 		for (AudioTrackInfo track : m_trackList)
 		{
@@ -321,9 +321,9 @@ public class CSoundPool
 		m_playSoundMap.clear();
 	}
 
-	public void Release()
+	public void release()
 	{
-		StopAllSound();
+		stopAllSound();
 		for (AudioTrackInfo track : m_trackList)
 		{
 			track.audioTrack.release();
@@ -331,24 +331,24 @@ public class CSoundPool
 		m_audioDataMap.clear();
 	}
 
-	private AudioTrackInfo GetAudioTrack(int index)
+	private AudioTrackInfo getAudioTrack(int index)
 	{
 		return m_trackList.get(index);
 	}
 
-	private void InitSoundTracks(int maxStreams)
+	private void initSoundTracks(int maxStreams)
 	{
 		m_trackList = new ArrayList<AudioTrackInfo>(maxStreams);
 		for (int i = 0; i < maxStreams; ++i)
 		{
-			AudioTrack audioTrack = BuildAudioTrack();
+			AudioTrack audioTrack = buildAudioTrack();
 			m_trackList.add(new AudioTrackInfo(audioTrack));
 			m_freeTrack.push(i);
 		}
 	}
 
 	@SuppressLint("NewApi")
-	private AudioTrack BuildAudioTrack()
+	private AudioTrack buildAudioTrack()
 	{
 		AudioAttributes.Builder attrBuilder = new AudioAttributes.Builder();
 		attrBuilder.setContentType(AudioAttributes.CONTENT_TYPE_MUSIC);
