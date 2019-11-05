@@ -72,7 +72,7 @@ public class CSoundPool
 		}
 	}
 
-	private SparseArray<AudioData> m_audioDataMap = new SparseArray<AudioData>();
+	private SparseArray<AudioData> m_audioDataMap = new SparseArray<AudioData>(); // sound_id=>AudioData
 	private SparseIntArray m_playSoundMap = new SparseIntArray(); // stream_id=>track_id
 	private List<AudioTrackInfo> m_trackList = null;
 	private Stack<Integer> m_freeTrack = new Stack<Integer>(); // track_index
@@ -169,7 +169,7 @@ public class CSoundPool
 	 * Unload Sound.
 	 * 
 	 * @param sound_id
-	 *            return by LoadSound.
+	 *            return by {@link #loadSound(...)}.
 	 */
 	public void unloadSound(int sound_id)
 	{
@@ -180,7 +180,7 @@ public class CSoundPool
 	 * Play Sound.
 	 * 
 	 * @param sound_id
-	 *            return by LoadSound.
+	 *            return by {@link #loadSound(...)}.
 	 * @param priority
 	 * @param loop
 	 * @return error code (<0) on error, stream id on success.
@@ -228,6 +228,56 @@ public class CSoundPool
 		pushPlayTrack(new TrackIndex(trackIndex, priority));
 		m_playSoundMap.put(stream_id, trackIndex);
 		return stream_id;
+	}
+
+	/**
+	 * Stop Sound.
+	 * 
+	 * @param stream_id
+	 *            retun by {@link #playSound(...)}.
+	 */
+	public void stopSound(int stream_id)
+	{
+		int index = m_playSoundMap.indexOfKey(stream_id);
+		if (index < 0)
+		{
+			return;
+		}
+
+		int trackIndex = m_playSoundMap.valueAt(index);
+		removePlayTrack(trackIndex);
+		m_playSoundMap.removeAt(index);
+		m_freeTrack.push(trackIndex);
+
+		AudioTrackInfo track = getAudioTrack(trackIndex);
+		if (track != null)
+		{
+			track.stop();
+		}
+	}
+
+	public void stopAllSound()
+	{
+		for (AudioTrackInfo track : m_trackList)
+		{
+			track.stop();
+		}
+		for (TrackIndex info : m_playTrack)
+		{
+			m_freeTrack.push(info.track_index);
+		}
+		m_playTrack.clear();
+		m_playSoundMap.clear();
+	}
+
+	public void release()
+	{
+		stopAllSound();
+		for (AudioTrackInfo track : m_trackList)
+		{
+			track.audioTrack.release();
+		}
+		m_audioDataMap.clear();
 	}
 
 	private TrackIndex popPlayTrack()
@@ -280,56 +330,6 @@ public class CSoundPool
 		{
 			Arrays.fill(m_audioBuffer, length, m_audioBuffer.length, 0);
 		}
-	}
-
-	/**
-	 * Stop Sound.
-	 * 
-	 * @param stream_id
-	 *            retun by PlaySound.
-	 */
-	public void stopSound(int stream_id)
-	{
-		int index = m_playSoundMap.indexOfKey(stream_id);
-		if (index < 0)
-		{
-			return;
-		}
-
-		int trackIndex = m_playSoundMap.valueAt(index);
-		removePlayTrack(trackIndex);
-		m_playSoundMap.removeAt(index);
-		m_freeTrack.push(trackIndex);
-
-		AudioTrackInfo track = getAudioTrack(trackIndex);
-		if (track != null)
-		{
-			track.stop();
-		}
-	}
-
-	public void stopAllSound()
-	{
-		for (AudioTrackInfo track : m_trackList)
-		{
-			track.stop();
-		}
-		for (TrackIndex info : m_playTrack)
-		{
-			m_freeTrack.push(info.track_index);
-		}
-		m_playTrack.clear();
-		m_playSoundMap.clear();
-	}
-
-	public void release()
-	{
-		stopAllSound();
-		for (AudioTrackInfo track : m_trackList)
-		{
-			track.audioTrack.release();
-		}
-		m_audioDataMap.clear();
 	}
 
 	private AudioTrackInfo getAudioTrack(int index)
