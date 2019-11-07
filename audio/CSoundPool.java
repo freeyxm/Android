@@ -15,7 +15,6 @@ import android.app.Activity;
 import android.media.*;
 import android.os.Build;
 import android.util.SparseArray;
-import android.util.SparseIntArray;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class CSoundPool
@@ -63,17 +62,18 @@ public class CSoundPool
 	private class TrackIndex
 	{
 		public int track_index = 0;
+		public int stream_id = 0;
 		public int priority = 0;
 
-		public TrackIndex(int track_index, int priority)
+		public TrackIndex(int track_index, int stream_id, int priority)
 		{
 			this.track_index = track_index;
+			this.stream_id = stream_id;
 			this.priority = priority;
 		}
 	}
 
 	private SparseArray<AudioData> m_audioDataMap = new SparseArray<AudioData>(); // sound_id=>AudioData
-	private SparseIntArray m_playSoundMap = new SparseIntArray(); // stream_id=>track_id
 	private List<AudioTrackInfo> m_trackList = null;
 	private Stack<Integer> m_freeTrack = new Stack<Integer>(); // track_index
 	private LinkedList<TrackIndex> m_playTrack = new LinkedList<TrackIndex>();
@@ -81,6 +81,13 @@ public class CSoundPool
 	private int m_stream_id = 0;
 	private Activity m_activity = null;
 
+	/**
+	 * CSoundPool
+	 * 
+	 * @param activity
+	 * @param maxStreams
+	 *            the maximum number of streams for this object。
+	 */
 	public CSoundPool(Activity activity, int maxStreams)
 	{
 		m_activity = activity;
@@ -91,6 +98,7 @@ public class CSoundPool
 	 * Load Sound. Only support pcm wav file.
 	 * 
 	 * @param path
+	 * @param isAsset
 	 * @return error code (<0) on error, sound id on success.
 	 */
 	public int loadSound(String path, boolean isAsset)
@@ -116,19 +124,10 @@ public class CSoundPool
 			{
 				return -1003;
 			}
-			int validBits = wavFile.getValidBits();
-			if (validBits != 16)
-			{
-				return -1004;
-			}
 			int numFrames = (int) wavFile.getNumFrames();
 			if (numFrames > m_maxFrame)
 			{
 				numFrames = m_maxFrame;
-			}
-			if (numFrames <= 0)
-			{
-				return -1005;
 			}
 
 			AudioData audioData = new AudioData();
@@ -148,6 +147,7 @@ public class CSoundPool
 		}
 		catch (Exception e)
 		{
+			e.printStackTrace();
 			return -1001;
 		}
 		finally
@@ -225,8 +225,7 @@ public class CSoundPool
 		track.play();
 
 		int stream_id = ++m_stream_id;
-		pushPlayTrack(new TrackIndex(trackIndex, priority));
-		m_playSoundMap.put(stream_id, trackIndex);
+		pushPlayTrack(new TrackIndex(trackIndex, stream_id, priority));
 		return stream_id;
 	}
 
@@ -238,18 +237,15 @@ public class CSoundPool
 	 */
 	public void stopSound(int stream_id)
 	{
-		int index = m_playSoundMap.indexOfKey(stream_id);
-		if (index < 0)
+		TrackIndex trackIndex = removePlayTrack(stream_id);
+		if (trackIndex == null)
 		{
 			return;
 		}
 
-		int trackIndex = m_playSoundMap.valueAt(index);
-		removePlayTrack(trackIndex);
-		m_playSoundMap.removeAt(index);
-		m_freeTrack.push(trackIndex);
+		m_freeTrack.push(trackIndex.track_index);
 
-		AudioTrackInfo track = getAudioTrack(trackIndex);
+		AudioTrackInfo track = getAudioTrack(trackIndex.track_index);
 		if (track != null)
 		{
 			track.stop();
@@ -267,7 +263,6 @@ public class CSoundPool
 			m_freeTrack.push(info.track_index);
 		}
 		m_playTrack.clear();
-		m_playSoundMap.clear();
 	}
 
 	public void release()
@@ -277,7 +272,11 @@ public class CSoundPool
 		{
 			track.audioTrack.release();
 		}
+		m_trackList.clear();
 		m_audioDataMap.clear();
+		m_freeTrack.clear();
+		m_sound_id = 0;
+		m_stream_id = 0;
 	}
 
 	private TrackIndex popPlayTrack()
@@ -302,18 +301,19 @@ public class CSoundPool
 		m_playTrack.addLast(track);
 	}
 
-	private void removePlayTrack(int track_index)
+	private TrackIndex removePlayTrack(int stream_id)
 	{
 		Iterator<TrackIndex> it = m_playTrack.iterator();
 		while (it.hasNext())
 		{
 			TrackIndex info = it.next();
-			if (info.track_index == track_index)
+			if (info.stream_id == stream_id)
 			{
 				it.remove();
-				break;
+				return info;
 			}
 		}
+		return null;
 	}
 
 	private void setAudioData(AudioData audioData)
@@ -343,8 +343,11 @@ public class CSoundPool
 		for (int i = 0; i < maxStreams; ++i)
 		{
 			AudioTrack audioTrack = buildAudioTrack();
-			m_trackList.add(new AudioTrackInfo(audioTrack));
-			m_freeTrack.push(i);
+			if (audioTrack != null)
+			{
+				m_trackList.add(new AudioTrackInfo(audioTrack));
+				m_freeTrack.push(i);
+			}
 		}
 	}
 
@@ -364,19 +367,26 @@ public class CSoundPool
 		// formatBuilder.setChannelIndexMask(0x3); // 2 channels.
 		AudioFormat format = formatBuilder.build();
 
-		int bufferSizeInBytes = m_maxFrame * m_numChannels * Float.BYTES;
-
 		AudioTrack track;
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+		try
 		{
-			track = new AudioTrack.Builder().setAudioAttributes(attributes).setAudioFormat(format)
-					.setBufferSizeInBytes(bufferSizeInBytes).setTransferMode(AudioTrack.MODE_STATIC)
-					.setSessionId(AudioManager.AUDIO_SESSION_ID_GENERATE).build();
+			int bufferSizeInBytes = m_maxFrame * m_numChannels * Float.BYTES;
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+			{
+				track = new AudioTrack.Builder().setAudioAttributes(attributes).setAudioFormat(format)
+						.setBufferSizeInBytes(bufferSizeInBytes).setTransferMode(AudioTrack.MODE_STATIC)
+						.setSessionId(AudioManager.AUDIO_SESSION_ID_GENERATE).build();
+			}
+			else
+			{
+				track = new AudioTrack(attributes, format, bufferSizeInBytes, AudioTrack.MODE_STATIC,
+						AudioManager.AUDIO_SESSION_ID_GENERATE);
+			}
 		}
-		else
+		catch (Exception e)
 		{
-			track = new AudioTrack(attributes, format, bufferSizeInBytes, AudioTrack.MODE_STATIC,
-					AudioManager.AUDIO_SESSION_ID_GENERATE);
+			e.printStackTrace();
+			track = null;
 		}
 		return track;
 	}
